@@ -7,6 +7,10 @@
 
 package repo
 
+import (
+	"github.com/dgraph-io/badger/v3"
+)
+
 func badgerOpts(dbPath string) badger.Options {
 	return badger.DefaultOptions(dbPath).
 		WithMemTableSize(1 << 20).
