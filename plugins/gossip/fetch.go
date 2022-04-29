@@ -111,6 +111,7 @@ func (h *LegacyGossip) fetchFeed(
 	q.ID = fr
 	q.Seq = int64(latestSeq + 1)
 	q.Live = withLive
+	q.Limit = 1000
 
 	defer func() {
 		if n := latestSeq - startSeq; n > 0 {

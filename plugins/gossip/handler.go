@@ -112,7 +112,7 @@ func (g *LegacyGossip) StartLegacyFetching(ctx context.Context, e muxrpc.Endpoin
 
 	if !g.enableLiveStreaming {
 		// start polling
-		tick := time.NewTicker(5 * time.Minute)
+		tick := time.NewTicker(5 * time.Second)
 
 		for {
 			select {
