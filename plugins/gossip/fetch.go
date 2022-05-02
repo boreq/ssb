@@ -25,11 +25,11 @@ import (
 
 func (h *LegacyGossip) FetchAll(
 	ctx context.Context,
-	e muxrpc.Endpoint,
+	edp muxrpc.Endpoint,
 	set *ssb.StrFeedSet,
 	withLive bool,
 ) error {
-	lst, err := set.List()
+	feeds, err := set.List()
 	if err != nil {
 		return err
 	}
@@ -48,35 +48,68 @@ func (h *LegacyGossip) FetchAll(
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	fetchGroup, ctx := errgroup.WithContext(ctx)
 
-	for _, r := range lst {
-		fetchGroup.Go(h.workFeed(ctx, e, r, withLive))
+	feedCh := make(chan refs.FeedRef)
+
+	fetchGroup, ctx := errgroup.WithContext(ctx)
+	h.startWorkers(ctx, feedCh, edp, fetchGroup)
+
+	for _, feed := range feeds {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case feedCh <- feed:
+			continue
+		}
 	}
 
-	err = fetchGroup.Wait()
-	return err
+	close(feedCh)
+
+	return fetchGroup.Wait()
 }
 
-func (h *LegacyGossip) workFeed(ctx context.Context, edp muxrpc.Endpoint, ref refs.FeedRef, withLive bool) func() error {
-	return func() error {
-		err := h.fetchFeed(ctx, ref, edp, time.Now(), withLive)
-		var callErr *muxrpc.CallError
-		var noSuchMethodErr muxrpc.ErrNoSuchMethod
-		if muxrpc.IsSinkClosed(err) ||
-			errors.As(err, &noSuchMethodErr) ||
-			errors.As(err, &callErr) ||
-			errors.Is(err, context.Canceled) ||
-			errors.Is(err, muxrpc.ErrSessionTerminated) ||
-			neterr.IsConnBrokenErr(err) {
-			return err
-		} else if err != nil {
-			// just logging the error assuming forked feed for instance
-			level.Warn(h.Info).Log("event", "skipped updating of stored feed", "err", err, "fr", ref.ShortSigil())
-		}
+const numWorkers = 5
 
-		return nil
+func (h *LegacyGossip) startWorkers(ctx context.Context, feedCh <-chan refs.FeedRef, edp muxrpc.Endpoint, fetchGroup *errgroup.Group) {
+	for i := 0; i < numWorkers; i++ {
+		fetchGroup.Go(
+			func() error {
+				for {
+					select {
+					case feed, ok := <-feedCh:
+						if !ok {
+							return nil
+						}
+
+						if err := h.workFeed(ctx, edp, feed, false); err != nil {
+							return err
+						}
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
+			},
+		)
 	}
+}
+
+func (h *LegacyGossip) workFeed(ctx context.Context, edp muxrpc.Endpoint, ref refs.FeedRef, withLive bool) error {
+	err := h.fetchFeed(ctx, ref, edp, time.Now(), withLive)
+	var callErr *muxrpc.CallError
+	var noSuchMethodErr muxrpc.ErrNoSuchMethod
+	if muxrpc.IsSinkClosed(err) ||
+		errors.As(err, &noSuchMethodErr) ||
+		errors.As(err, &callErr) ||
+		errors.Is(err, context.Canceled) ||
+		errors.Is(err, muxrpc.ErrSessionTerminated) ||
+		neterr.IsConnBrokenErr(err) {
+		return err
+	} else if err != nil {
+		// just logging the error assuming forked feed for instance
+		level.Warn(h.Info).Log("event", "skipped updating of stored feed", "err", err, "fr", ref.ShortSigil())
+	}
+
+	return nil
 }
 
 // fetchFeed requests the feed fr from endpoint e into the repo of the handler
