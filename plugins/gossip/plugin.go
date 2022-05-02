@@ -24,6 +24,10 @@ import (
 
 type HMACSecret *[32]byte
 
+type NumberOfConcurrentReplicationsPerPeer int
+
+const defaultNumberOfConcurrentReplicationsPerPeer = 5
+
 // NewFetcher returns a muxrpc handler plugin which requests and verifies feeds, based on the passed replication lister.
 func NewFetcher(
 	ctx context.Context,
@@ -52,6 +56,8 @@ func NewFetcher(
 		rootCtx: ctx,
 
 		verifyRouter: vr,
+
+		numberOfConcurrentReplicationsPerPeer: defaultNumberOfConcurrentReplicationsPerPeer,
 	}
 
 	for i, o := range opts {
@@ -62,6 +68,8 @@ func NewFetcher(
 			h.sysCtr = v
 		case HMACSecret:
 			h.hmacSec = v
+		case NumberOfConcurrentReplicationsPerPeer:
+			h.numberOfConcurrentReplicationsPerPeer = int(v)
 		default:
 			level.Warn(log).Log("event", "unhandled gossip option", "i", i, "type", fmt.Sprintf("%T", o))
 		}
@@ -91,6 +99,8 @@ func NewServer(
 
 		Info:    log,
 		rootCtx: ctx,
+
+		numberOfConcurrentReplicationsPerPeer: defaultNumberOfConcurrentReplicationsPerPeer,
 	}
 
 	for i, o := range opts {
@@ -101,6 +111,8 @@ func NewServer(
 			h.sysCtr = v
 		case HMACSecret:
 			h.hmacSec = v
+		case NumberOfConcurrentReplicationsPerPeer:
+			h.numberOfConcurrentReplicationsPerPeer = int(v)
 		default:
 			level.Warn(log).Log("event", "unhandled gossip option", "i", i, "type", fmt.Sprintf("%T", o))
 		}

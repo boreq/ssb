@@ -57,6 +57,8 @@ type LegacyGossip struct {
 	verifyRouter *message.VerificationRouter
 
 	rootCtx context.Context
+
+	numberOfConcurrentReplicationsPerPeer int
 }
 
 func (LegacyGossip) Handled(m muxrpc.Method) bool { return m.String() == "createHistoryStream" }

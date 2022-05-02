@@ -115,6 +115,8 @@ type Sbot struct {
 
 	websocketAddr string
 
+	numberOfConcurrentReplicationsPerPeer int
+
 	repoPath string
 	KeyPair  ssb.KeyPair
 
@@ -653,6 +655,10 @@ func New(fopts ...Option) (*Sbot, error) {
 
 	if s.signHMACsecret != nil {
 		histOpts = append(histOpts, gossip.HMACSecret(s.signHMACsecret))
+	}
+
+	if s.numberOfConcurrentReplicationsPerPeer != 0 {
+		histOpts = append(histOpts, gossip.NumberOfConcurrentReplicationsPerPeer(s.numberOfConcurrentReplicationsPerPeer))
 	}
 
 	s.verifyRouter, err = message.NewVerificationRouter(s.ReceiveLog, s.Users, s.signHMACsecret)

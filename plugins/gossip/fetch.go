@@ -61,12 +61,10 @@ func (h *LegacyGossip) FetchAll(
 	return errGroup.Wait()
 }
 
-const numWorkers = 5
-
 func (h *LegacyGossip) startWorkers(ctx context.Context, feedCh <-chan refs.FeedRef, edp muxrpc.Endpoint) *errgroup.Group {
 	errGroup, ctx := errgroup.WithContext(ctx)
 
-	for i := 0; i < numWorkers; i++ {
+	for i := 0; i < h.numberOfConcurrentReplicationsPerPeer; i++ {
 		errGroup.Go(
 			func() error {
 				for {

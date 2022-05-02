@@ -409,3 +409,11 @@ func LateOption(o Option) Option {
 		return nil
 	}
 }
+
+// WithWebsocketAddress changes the HTTP listener address, by default it's :8989.
+func WithNumberOfConcurrentReplicationsPerPeer(n int) Option {
+	return func(s *Sbot) error {
+		s.numberOfConcurrentReplicationsPerPeer = n
+		return nil
+	}
+}
