@@ -90,11 +90,9 @@ type Sbot struct {
 	closedMu sync.Mutex
 	closeErr error
 
-	promisc  bool
 	hopCount uint
 
-	disableEBT                   bool
-	disableLegacyLiveReplication bool
+	disableEBT bool
 
 	Network *network.Node
 	// TODO: these should all be options that are applied on the network construction...
@@ -177,8 +175,6 @@ func New(fopts ...Option) (*Sbot, error) {
 	s.mlogIndicies = make(map[string]multilog.MultiLog)
 	s.simpleIndex = make(map[string]librarian.Index)
 	s.indexStates = make(map[string]string)
-
-	s.disableLegacyLiveReplication = true
 
 	for i, opt := range fopts {
 		err := opt(s)
@@ -567,10 +563,6 @@ func New(fopts ...Option) (*Sbot, error) {
 			}
 		}
 
-		if s.promisc {
-			return s.public.MakeHandler(conn)
-		}
-
 		auth := s.authorizer
 		if auth == nil {
 			auth = s.Replicator.Lister()
@@ -649,9 +641,7 @@ func New(fopts ...Option) (*Sbot, error) {
 	)
 
 	// outgoing gossip behavior
-	var histOpts = []interface{}{
-		gossip.Promisc(s.promisc),
-	}
+	var histOpts = []interface{}{}
 
 	if s.systemGauge != nil {
 		histOpts = append(histOpts, s.systemGauge)
@@ -668,10 +658,6 @@ func New(fopts ...Option) (*Sbot, error) {
 	s.verifyRouter, err = message.NewVerificationRouter(s.ReceiveLog, s.Users, s.signHMACsecret)
 	if err != nil {
 		return nil, err
-	}
-
-	if s.disableLegacyLiveReplication {
-		histOpts = append(histOpts, gossip.WithLive(!s.disableLegacyLiveReplication))
 	}
 
 	gossipPlug := gossip.NewFetcher(ctx,

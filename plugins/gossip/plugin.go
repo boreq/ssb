@@ -24,10 +24,6 @@ import (
 
 type HMACSecret *[32]byte
 
-type Promisc bool
-
-type WithLive bool
-
 // NewFetcher returns a muxrpc handler plugin which requests and verifies feeds, based on the passed replication lister.
 func NewFetcher(
 	ctx context.Context,
@@ -56,8 +52,6 @@ func NewFetcher(
 		rootCtx: ctx,
 
 		verifyRouter: vr,
-
-		enableLiveStreaming: true,
 	}
 
 	for i, o := range opts {
@@ -68,10 +62,6 @@ func NewFetcher(
 			h.sysCtr = v
 		case HMACSecret:
 			h.hmacSec = v
-		case Promisc:
-			h.promisc = bool(v)
-		case WithLive:
-			h.enableLiveStreaming = bool(v)
 		default:
 			level.Warn(log).Log("event", "unhandled gossip option", "i", i, "type", fmt.Sprintf("%T", o))
 		}
@@ -109,12 +99,8 @@ func NewServer(
 			h.sysGauge = v
 		case metrics.Counter:
 			h.sysCtr = v
-		case Promisc:
-			h.promisc = bool(v)
 		case HMACSecret:
 			h.hmacSec = v
-		case WithLive:
-			// no consequence - the outgoing live code is fine
 		default:
 			level.Warn(log).Log("event", "unhandled gossip option", "i", i, "type", fmt.Sprintf("%T", o))
 		}

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"time"
 
 	"go.cryptoscope.co/muxrpc/v2"
@@ -17,7 +18,6 @@ import (
 	"go.mindeco.de/log/level"
 	"golang.org/x/sync/errgroup"
 
-	"go.cryptoscope.co/ssb"
 	"go.cryptoscope.co/ssb/internal/neterr"
 	"go.cryptoscope.co/ssb/message"
 	refs "go.mindeco.de/ssb-refs"
@@ -26,53 +26,48 @@ import (
 func (h *LegacyGossip) FetchAll(
 	ctx context.Context,
 	edp muxrpc.Endpoint,
-	set *ssb.StrFeedSet,
-	withLive bool,
 ) error {
+	set := h.WantList.ReplicationList()
+
 	feeds, err := set.List()
 	if err != nil {
 		return err
 	}
 
-	// TODO: warning unbound parallellism ahead.
-	// since we don't have a way yet to handoff a feed
-	// all feeds will be stuck in the pool.
-	//
-	// this is very bad if you have a lot of them.
-	//
-	// ebt will make this better
-	// we need some kind of pull feed manager, similar to Blobs
-	// which we can ask for which feeds aren't in transit,
-	// due for a (probabilistic) update
-	// and manage live feeds more granularly across open connections
+	rand.Shuffle(len(feeds), func(i, j int) {
+		feeds[i], feeds[j] = feeds[j], feeds[i]
+	})
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	feedCh := make(chan refs.FeedRef)
 
-	fetchGroup, ctx := errgroup.WithContext(ctx)
-	h.startWorkers(ctx, feedCh, edp, fetchGroup)
+	errGroup := h.startWorkers(ctx, feedCh, edp)
 
-	for _, feed := range feeds {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case feedCh <- feed:
-			continue
+	go func() {
+		defer close(feedCh)
+
+		for _, feed := range feeds {
+			select {
+			case <-ctx.Done():
+				return
+			case feedCh <- feed:
+				continue
+			}
 		}
-	}
+	}()
 
-	close(feedCh)
-
-	return fetchGroup.Wait()
+	return errGroup.Wait()
 }
 
 const numWorkers = 5
 
-func (h *LegacyGossip) startWorkers(ctx context.Context, feedCh <-chan refs.FeedRef, edp muxrpc.Endpoint, fetchGroup *errgroup.Group) {
+func (h *LegacyGossip) startWorkers(ctx context.Context, feedCh <-chan refs.FeedRef, edp muxrpc.Endpoint) *errgroup.Group {
+	errGroup, ctx := errgroup.WithContext(ctx)
+
 	for i := 0; i < numWorkers; i++ {
-		fetchGroup.Go(
+		errGroup.Go(
 			func() error {
 				for {
 					select {
@@ -91,6 +86,8 @@ func (h *LegacyGossip) startWorkers(ctx context.Context, feedCh <-chan refs.Feed
 			},
 		)
 	}
+
+	return errGroup
 }
 
 func (h *LegacyGossip) workFeed(ctx context.Context, edp muxrpc.Endpoint, ref refs.FeedRef, withLive bool) error {

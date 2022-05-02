@@ -74,16 +74,6 @@ func DisableEBT(yes bool) Option {
 	}
 }
 
-// DisableLegacyLiveReplication controls wether createHistoryStreams are created with live:true flag.
-// This code is functional but might not scale to a lot of feeds. Therefore this flag can be used to force
-// the old non-live polling mode.
-func DisableLegacyLiveReplication(yes bool) Option {
-	return func(s *Sbot) error {
-		s.disableLegacyLiveReplication = yes
-		return nil
-	}
-}
-
 // WithListenAddr changes the muxrpc listener address. By default it listens to ':8008'.
 func WithListenAddr(addr string) Option {
 	return func(s *Sbot) error {
@@ -387,14 +377,6 @@ func WithWebsocketAddress(addr string) Option {
 func WithHops(h uint) Option {
 	return func(s *Sbot) error {
 		s.hopCount = h
-		return nil
-	}
-}
-
-// WithPromisc when enabled bypasses graph-distance lookups on connections and makes the gossip handler fetch the remotes feed
-func WithPromisc(yes bool) Option {
-	return func(s *Sbot) error {
-		s.promisc = yes
 		return nil
 	}
 }

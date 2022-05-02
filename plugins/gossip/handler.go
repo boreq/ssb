@@ -24,7 +24,6 @@ import (
 	"go.mindeco.de/logging"
 
 	"go.cryptoscope.co/ssb"
-	"go.cryptoscope.co/ssb/internal/storedrefs"
 	"go.cryptoscope.co/ssb/message"
 	"go.cryptoscope.co/ssb/repo"
 	refs "go.mindeco.de/ssb-refs"
@@ -47,10 +46,6 @@ type LegacyGossip struct {
 
 	hmacSec HMACSecret
 
-	promisc bool // ask for remote feed even if it's not on owns fetch list
-
-	enableLiveStreaming bool
-
 	activeLock  *sync.Mutex
 	activeFetch map[string]struct{}
 
@@ -68,10 +63,10 @@ func (LegacyGossip) Handled(m muxrpc.Method) bool { return m.String() == "create
 
 // HandleConnect on this handler triggers legacy createHistoryStream replication.
 func (g *LegacyGossip) HandleConnect(ctx context.Context, e muxrpc.Endpoint) {
-	g.StartLegacyFetching(ctx, e, g.enableLiveStreaming)
+	g.StartLegacyFetching(ctx, e)
 }
 
-func (g *LegacyGossip) StartLegacyFetching(ctx context.Context, e muxrpc.Endpoint, withLive bool) {
+func (g *LegacyGossip) StartLegacyFetching(ctx context.Context, e muxrpc.Endpoint) {
 	remote := e.Remote()
 	remoteRef, err := ssb.GetFeedRefFromAddr(remote)
 	if err != nil {
@@ -83,50 +78,20 @@ func (g *LegacyGossip) StartLegacyFetching(ctx context.Context, e muxrpc.Endpoin
 		return
 	}
 
-	info := log.With(g.Info, "remote", remoteRef.ShortSigil(), "event", "gossiprx", "live", withLive)
+	info := log.With(g.Info, "remote", remoteRef.ShortSigil(), "event", "gossiprx")
 
-	if g.promisc {
-		hasCallee, err := multilog.Has(g.UserFeeds, storedrefs.Feed(remoteRef))
-		if err != nil {
-			info.Log("handleConnect", "multilog.Has(callee)", "err", err)
+	for {
+		err = g.FetchAll(ctx, e)
+		if err != nil && !muxrpc.IsSinkClosed(err) {
+			level.Warn(info).Log("msg", "fetch all failed", "err", err)
 			return
 		}
 
-		if !hasCallee {
-			info.Log("handleConnect", "oops - dont have feed of remote peer. requesting...")
-			if err := g.fetchFeed(ctx, remoteRef, e, time.Now(), withLive); err != nil {
-				info.Log("handleConnect", "fetchFeed callee failed", "err", err)
-				return
-			}
-			info.Log("msg", "done fetching callee")
-		}
-	}
-
-	feeds := g.WantList.ReplicationList()
-	//level.Debug(info).Log("msg", "hops count", "count", feeds.Count())
-	err = g.FetchAll(ctx, e, feeds, withLive)
-	if err != nil && !muxrpc.IsSinkClosed(err) {
-		level.Warn(info).Log("msg", "hops failed", "err", err)
-		return
-	}
-
-	if !g.enableLiveStreaming {
-		// start polling
-		tick := time.NewTicker(5 * time.Second)
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-
-			case <-tick.C:
-				feeds := g.WantList.ReplicationList()
-				err = g.FetchAll(ctx, e, feeds, withLive)
-				if err != nil && !muxrpc.IsSinkClosed(err) {
-					level.Warn(info).Log("msg", "hops failed", "err", err)
-					return
-				}
-			}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second):
+			continue
 		}
 	}
 }
@@ -192,7 +157,7 @@ func (g *LegacyGossip) HandleCall(
 		// dbgLog = level.Warn(hlog)
 
 		// skip this check for self/master or in promisc mode (talk to everyone)
-		if !(g.Id.Equal(remote) || g.promisc) {
+		if !(g.Id.Equal(remote)) {
 			blocks := g.WantList.BlockList()
 
 			if blocks.Has(query.ID) {
