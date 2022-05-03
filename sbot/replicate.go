@@ -81,6 +81,10 @@ func (r *graphReplicator) makeUpdater(log log.Logger, self refs.FeedRef, hopCoun
 	return func() {
 		start := time.Now()
 		newWants := r.bot.GraphBuilder.Hops(self, hopCount)
+		if newWants == nil {
+			level.Error(log).Log("msg", "want list is nil")
+			return
+		}
 
 		refs, err := newWants.List()
 		if err != nil {
@@ -137,6 +141,9 @@ func debounce(ctx context.Context, interval time.Duration, obs luigi.Observable,
 		case <-ctx.Done():
 			done()
 			return
+
+		case <-time.After(30 * time.Second):
+			work()
 
 		case <-timer.C:
 			seqMu.Lock()

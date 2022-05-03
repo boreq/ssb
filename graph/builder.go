@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/dgraph-io/badger/v3"
 	librarian "go.cryptoscope.co/margaret/indexes"
@@ -61,8 +62,9 @@ type BadgerBuilder struct {
 
 	log log.Logger
 
-	cacheLock   sync.Mutex
-	cachedGraph *Graph
+	cacheLock      sync.Mutex
+	cachedGraph    *Graph
+	cacheTimestamp time.Time
 
 	hmacSecret *[32]byte
 }
@@ -121,7 +123,7 @@ func (b *BadgerBuilder) Build() (*Graph, error) {
 	b.cacheLock.Lock()
 	defer b.cacheLock.Unlock()
 
-	if b.cachedGraph != nil {
+	if b.cachedGraph != nil && time.Since(b.cacheTimestamp) < time.Minute {
 		return b.cachedGraph, nil
 	}
 
@@ -226,6 +228,7 @@ func (b *BadgerBuilder) Build() (*Graph, error) {
 	})
 
 	b.cachedGraph = dg
+	b.cacheTimestamp = time.Now()
 	return dg, err
 }
 
