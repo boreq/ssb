@@ -116,6 +116,7 @@ type Sbot struct {
 	websocketAddr string
 
 	numberOfConcurrentReplicationsPerPeer int
+	numberOfConcurrentReplications        int
 
 	repoPath string
 	KeyPair  ssb.KeyPair
@@ -661,6 +662,10 @@ func New(fopts ...Option) (*Sbot, error) {
 		histOpts = append(histOpts, gossip.NumberOfConcurrentReplicationsPerPeer(s.numberOfConcurrentReplicationsPerPeer))
 	}
 
+	if s.numberOfConcurrentReplications != 0 {
+		histOpts = append(histOpts, gossip.NumberOfConcurrentReplications(s.numberOfConcurrentReplications))
+	}
+
 	s.verifyRouter, err = message.NewVerificationRouter(s.ReceiveLog, s.Users, s.signHMACsecret)
 	if err != nil {
 		return nil, err
@@ -817,16 +822,9 @@ func New(fopts ...Option) (*Sbot, error) {
 		}
 	}
 
-	graphDumpPathPrefix := "/graph/dump"
-
 	simpleRouter := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if strings.HasPrefix(req.URL.Path, blobsGetPathPrefix) {
 			httpBlogsGet(w, req)
-			return
-		}
-
-		if strings.HasPrefix(req.URL.Path, graphDumpPathPrefix) {
-			s.GraphBuilder.(*graph.BadgerBuilder).DumpXMLOverHTTP(s.KeyPair.ID(), w, req)
 			return
 		}
 

@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"math"
-	"net/http"
 	"sync"
 	"time"
 
@@ -16,7 +15,6 @@ import (
 	librarian "go.cryptoscope.co/margaret/indexes"
 	libbadger "go.cryptoscope.co/margaret/indexes/badger"
 	"go.mindeco.de/log"
-	"go.mindeco.de/log/level"
 	"gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/path"
 	"gonum.org/v1/gonum/graph/simple"
@@ -381,8 +379,7 @@ func (b *BadgerBuilder) recurseHops(walked *ssb.StrFeedSet, vis map[string]struc
 		return nil
 	}
 
-	// skip if we already visited this peer
-	if _, ok := vis[who.String()]; ok {
+	if _, alreadyVisited := vis[who.String()]; alreadyVisited {
 		return nil
 	}
 
@@ -472,120 +469,4 @@ func (b *BadgerBuilder) recurseHops(walked *ssb.StrFeedSet, vis map[string]struc
 	vis[who.String()] = struct{}{}
 
 	return nil
-}
-
-func (b *BadgerBuilder) DumpXMLOverHTTP(self refs.FeedRef, w http.ResponseWriter, req *http.Request) {
-	hlog := log.With(b.log, "http-handler", req.URL.Path)
-	g, err := b.Build()
-	if err != nil {
-		level.Error(hlog).Log("http-err", err.Error())
-		http.Error(w, "graph build failure", http.StatusInternalServerError)
-		return
-	}
-
-	// initialze new reducer
-	var rg graphReducer
-	rg.wanted = make(wantedMap)
-	rg.graph = simple.NewWeightedDirectedGraph(0, math.Inf(1))
-
-	// find the nodes we are interested in
-
-	selfNode, has := g.getNode(self)
-	if !has {
-		level.Error(hlog).Log("http-err", "no self node in graph")
-		http.Error(w, "graph build failure", http.StatusInternalServerError)
-		return
-	}
-	rg.wanted[selfNode.ID()] = struct{}{}
-
-	hopsSet := b.Hops(self, 1) // TODO: parametize
-	hopsList, err := hopsSet.List()
-	if err != nil {
-		level.Error(hlog).Log("http-err", err.Error())
-		http.Error(w, "graph build failure", http.StatusInternalServerError)
-		return
-	}
-
-	for _, feed := range hopsList {
-		node, has := g.getNode(feed)
-		if !has {
-			continue
-		}
-		rg.wanted[node.ID()] = struct{}{}
-	}
-
-	graph.CopyWeighted(rg, g)
-
-	var smallerGraph = new(Graph)
-	smallerGraph.lookup = g.lookup
-	smallerGraph.WeightedDirectedGraph = rg.graph
-
-	n := smallerGraph.NodeCount()
-	if n > 100 {
-		level.Error(hlog).Log("http-err", "too many nodes", "count", n)
-		http.Error(w, "too many nodes", http.StatusInternalServerError)
-		return
-	}
-
-	wh := w.Header()
-	wh.Set("Content-Type", "image/svg+xml")
-	w.WriteHeader(http.StatusOK)
-	err = smallerGraph.RenderSVG(w)
-	if err != nil {
-		level.Error(hlog).Log("http-err", err.Error())
-	}
-
-	level.Info(hlog).Log("graph", "dumped", "nodes", n)
-}
-
-type wantedMap map[int64]struct{}
-
-type graphReducer struct {
-	graph *simple.WeightedDirectedGraph
-
-	wanted wantedMap
-}
-
-// NewNode returns a new Node with a unique
-// arbitrary ID.
-func (gs graphReducer) NewNode() graph.Node {
-	panic("NewNode not supported")
-}
-
-// AddNode adds a node to the graph. AddNode panics if
-// the added node ID matches an existing node ID.
-func (gs graphReducer) AddNode(a graph.Node) {
-	if _, has := gs.wanted[a.ID()]; !has {
-		return
-	}
-	gs.graph.AddNode(a)
-}
-
-// NewWeightedEdge returns a new WeightedEdge from
-// the source to the destination node.
-func (gs graphReducer) NewWeightedEdge(from graph.Node, to graph.Node, weight float64) graph.WeightedEdge {
-	panic("not implemented") // TODO: Implement
-}
-
-// SetWeightedEdge adds an edge from one node to
-// another. If the graph supports node addition
-// the nodes will be added if they do not exist,
-// otherwise SetWeightedEdge will panic.
-// The behavior of a WeightedEdgeAdder when the IDs
-// returned by e.From() and e.To() are equal is
-// implementation-dependent.
-// Whether e, e.From() and e.To() are stored
-// within the graph is implementation dependent.
-func (gs graphReducer) SetWeightedEdge(e graph.WeightedEdge) {
-	if _, has := gs.wanted[e.From().ID()]; !has {
-		// fmt.Println("ignoring from", e.From().(*contactNode).feed.Ref())
-		return
-	}
-
-	if _, has := gs.wanted[e.To().ID()]; !has {
-		// fmt.Println("ignoring to", e.From().(*contactNode).feed.Ref())
-		return
-	}
-
-	gs.graph.SetWeightedEdge(e)
 }

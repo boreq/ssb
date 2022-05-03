@@ -410,10 +410,19 @@ func LateOption(o Option) Option {
 	}
 }
 
-// WithWebsocketAddress changes the HTTP listener address, by default it's :8989.
+// WithNumberOfConcurrentReplicationsPerPeer specifies how many feeds can be replicated at the same time using one peer
+// connection. This shouldn't be higher than WithNumberOfConcurrentReplications, setting it higher will be ineffective.
 func WithNumberOfConcurrentReplicationsPerPeer(n int) Option {
 	return func(s *Sbot) error {
 		s.numberOfConcurrentReplicationsPerPeer = n
+		return nil
+	}
+}
+
+// WithNumberOfConcurrentReplications specifies how many feeds can be replicated at the same time.
+func WithNumberOfConcurrentReplications(n int) Option {
+	return func(s *Sbot) error {
+		s.numberOfConcurrentReplications = n
 		return nil
 	}
 }

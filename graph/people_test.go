@@ -273,10 +273,10 @@ func (tc PeopleTestCase) run(mk func(t *testing.T) testStore) func(t *testing.T)
 			err := assert(&state)(state.store.gbuilder)
 			if !a.NoError(err, "assertion #%d failed", i+1) {
 
-				err = g.RenderSVGToFile(fmt.Sprintf("%s-%d.svg", t.Name(), i))
-				if err != nil {
-					t.Log("warning: failed to dump graph to SVG", err)
-				}
+				//err = g.RenderSVGToFile(fmt.Sprintf("%s-%d.svg", t.Name(), i))
+				//if err != nil {
+				//	t.Log("warning: failed to dump graph to SVG", err)
+				//}
 			}
 		}
 	}

@@ -63,12 +63,6 @@ func New(log logging.Interface, self refs.FeedRef, b graph.Builder) ssb.Plugin {
 		self:    self,
 	})
 
-	rootHdlr.RegisterAsync(muxrpc.Method{"friends", "plotsvg"}, plotSVGHandler{
-		log:     log,
-		builder: b,
-		self:    self,
-	})
-
 	return plugin{
 		h:   &rootHdlr,
 		log: log,

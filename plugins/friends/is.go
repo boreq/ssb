@@ -8,9 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"os"
-
 	"go.cryptoscope.co/muxrpc/v2"
 	"go.cryptoscope.co/ssb/graph"
 	"go.mindeco.de/log"
@@ -73,33 +70,4 @@ func (h isBlockingH) HandleAsync(ctx context.Context, req *muxrpc.Request) (inte
 	}
 
 	return g.Blocks(a.Source, a.Dest), nil
-}
-
-type plotSVGHandler struct {
-	self refs.FeedRef
-
-	log log.Logger
-
-	builder graph.Builder
-}
-
-func (h plotSVGHandler) HandleAsync(ctx context.Context, req *muxrpc.Request) (interface{}, error) {
-	g, err := h.builder.Build()
-	if err != nil {
-		return nil, err
-	}
-
-	fname, err := ioutil.TempFile("", "graph-*.svg")
-	if err != nil {
-		return nil, err
-	}
-
-	err = g.RenderSVG(fname)
-	if err != nil {
-		fname.Close()
-		os.Remove(fname.Name())
-		return nil, err
-	}
-
-	return fname.Name(), fname.Close()
 }

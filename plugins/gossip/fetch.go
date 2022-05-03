@@ -89,6 +89,13 @@ func (h *LegacyGossip) startWorkers(ctx context.Context, feedCh <-chan refs.Feed
 }
 
 func (h *LegacyGossip) workFeed(ctx context.Context, edp muxrpc.Endpoint, ref refs.FeedRef, withLive bool) error {
+	select {
+	case <-h.tokenPool.GetToken():
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	defer h.tokenPool.ReturnToken()
+
 	err := h.fetchFeed(ctx, ref, edp, time.Now(), withLive)
 	var callErr *muxrpc.CallError
 	var noSuchMethodErr muxrpc.ErrNoSuchMethod
@@ -195,4 +202,27 @@ func (h *LegacyGossip) fetchFeed(
 	}
 
 	return nil
+}
+
+type TokenPool struct {
+	ch chan struct{}
+}
+
+func NewTokenPool(n int) *TokenPool {
+	ch := make(chan struct{}, n)
+	for i := 0; i < n; i++ {
+		ch <- struct{}{}
+	}
+
+	return &TokenPool{
+		ch: ch,
+	}
+}
+
+func (p *TokenPool) GetToken() <-chan struct{} {
+	return p.ch
+}
+
+func (p *TokenPool) ReturnToken() {
+	p.ch <- struct{}{}
 }
