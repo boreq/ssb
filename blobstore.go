@@ -69,6 +69,7 @@ type WantManager interface {
 	WantWithDist(ref refs.BlobRef, dist int64) error
 	//Unwant(ref refs.BlobRef) error
 	CreateWants(context.Context, *muxrpc.ByteSink, muxrpc.Endpoint) luigi.Sink
+	PushBlob(ref refs.BlobRef)
 
 	AllWants() []BlobWant
 }

@@ -31,14 +31,15 @@ var ErrBlobBlocked = errors.New("ssb: unable to receive blob correctly")
 // NewWantManager returns the configured WantManager, using bs for storage and opts to configure it.
 func NewWantManager(bs ssb.BlobStore, opts ...WantManagerOption) *WantManager {
 	wmgr := &WantManager{
-		bs:        bs,
-		info:      log.NewNopLogger(),
-		maxSize:   DefaultMaxSize,
-		longCtx:   context.Background(),
-		wants:     make(map[string]int64),
-		blocked:   make(map[string]struct{}),
-		procs:     make(map[string]*wantProc),
-		available: make(chan *hasBlob),
+		bs:             bs,
+		info:           log.NewNopLogger(),
+		maxSize:        DefaultMaxSize,
+		longCtx:        context.Background(),
+		wants:          make(map[string]int64),
+		blocked:        make(map[string]struct{}),
+		procs:          make(map[string]*wantProc),
+		available:      make(chan *hasBlob),
+		pushBlobPubsub: NewPushBlobPubsub(),
 	}
 
 	for i, o := range opts {
@@ -85,9 +86,10 @@ type WantManager struct {
 
 	l sync.Mutex // TODO: what is this protecting
 
-	info   logging.Interface
-	evtCtr metrics.Counter
-	gauge  metrics.Gauge
+	info           logging.Interface
+	evtCtr         metrics.Counter
+	gauge          metrics.Gauge
+	pushBlobPubsub *PushBlobPubsub
 }
 
 func (wmgr *WantManager) replicateLoop() {
@@ -132,6 +134,10 @@ func (wmgr *WantManager) getOtherProcs(has *hasBlob) []*wantProc {
 		procs = append(procs, proc)
 	}
 	return procs
+}
+
+func (wmgr *WantManager) PushBlob(blobRef refs.BlobRef) {
+	wmgr.pushBlobPubsub.Publish(blobRef)
 }
 
 func (wmgr *WantManager) EmitBlob(n ssb.BlobStoreNotification) error {
@@ -325,6 +331,8 @@ func (wmgr *WantManager) CreateWants(ctx context.Context, sink *muxrpc.ByteSink,
 
 	wmgr.procs[edp.Remote().String()] = proc
 
+	go proc.pushBlobs()
+
 	return proc
 }
 
@@ -484,6 +492,33 @@ func (proc *wantProc) Pour(ctx context.Context, v interface{}) error {
 		return fmt.Errorf("error responding to wants: %w", err)
 	}
 	return nil
+}
+
+func (proc *wantProc) pushBlobs() {
+	for blobRef := range proc.wmgr.pushBlobPubsub.Subscribe(proc.rootCtx) {
+		if err := proc.pushBlob(blobRef); err != nil {
+			level.Warn(proc.info).Log("event", "push blob failed", "error", err)
+		}
+	}
+}
+
+func (proc *wantProc) pushBlob(blobRef refs.BlobRef) error {
+	proc.l.Lock()
+	defer proc.l.Unlock()
+
+	sz, err := proc.bs.Size(blobRef)
+	if err != nil {
+		return fmt.Errorf("error measuring blob size: %w", err)
+	}
+
+	wantMsg := WantMsg{
+		ssb.BlobWant{
+			Ref:  refs.BlobRef{},
+			Dist: sz,
+		},
+	}
+
+	return proc.out.Encode(wantMsg)
 }
 
 // WantMsg is an array of _wants_, a blob reference with a distance.
