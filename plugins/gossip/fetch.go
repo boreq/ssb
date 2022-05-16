@@ -14,14 +14,15 @@ import (
 	"time"
 
 	"go.cryptoscope.co/muxrpc/v2"
-	"go.mindeco.de/log"
-	"go.mindeco.de/log/level"
-	"golang.org/x/sync/errgroup"
-
 	"go.cryptoscope.co/ssb/internal/neterr"
 	"go.cryptoscope.co/ssb/message"
+	"go.mindeco.de/log"
+	"go.mindeco.de/log/level"
 	refs "go.mindeco.de/ssb-refs"
+	"golang.org/x/sync/errgroup"
 )
+
+const limit = 1000
 
 func (h *LegacyGossip) FetchAll(
 	ctx context.Context,
@@ -96,7 +97,19 @@ func (h *LegacyGossip) workFeed(ctx context.Context, edp muxrpc.Endpoint, ref re
 	}
 	defer h.tokenPool.ReturnToken()
 
-	err := h.fetchFeed(ctx, ref, edp, time.Now(), withLive)
+	onComplete, shouldReplicate := h.feedTracker.TryReplicate(edp.Remote(), ref)
+	if !shouldReplicate {
+		return nil
+	}
+
+	fetchedMessages, err := h.fetchFeed(ctx, ref, edp, time.Now(), withLive)
+
+	if fetchedMessages >= limit {
+		onComplete(ReplicationResultHasMoreMessages)
+	} else {
+		onComplete(ReplicationResultDoesNotHaveMoreMessages)
+	}
+
 	var callErr *muxrpc.CallError
 	var noSuchMethodErr muxrpc.ErrNoSuchMethod
 	if muxrpc.IsSinkClosed(err) ||
@@ -121,10 +134,10 @@ func (h *LegacyGossip) fetchFeed(
 	edp muxrpc.Endpoint,
 	started time.Time,
 	withLive bool,
-) error {
+) (int, error) {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return 0, ctx.Err()
 	default:
 	}
 
@@ -133,7 +146,7 @@ func (h *LegacyGossip) fetchFeed(
 	var err error
 	snk, err := h.verifyRouter.GetSink(fr, completeFeed)
 	if err != nil {
-		return fmt.Errorf("failed to get verify sink for feed: %w", err)
+		return 0, fmt.Errorf("failed to get verify sink for feed: %w", err)
 	}
 
 	var latestSeq = int(snk.Seq())
@@ -146,7 +159,7 @@ func (h *LegacyGossip) fetchFeed(
 	q.ID = fr
 	q.Seq = int64(latestSeq + 1)
 	q.Live = withLive
-	q.Limit = 1000
+	q.Limit = limit
 
 	defer func() {
 		if n := latestSeq - startSeq; n > 0 {
@@ -172,36 +185,39 @@ func (h *LegacyGossip) fetchFeed(
 	case refs.RefAlgoFeedGabby:
 		src, err = edp.Source(ctx, muxrpc.TypeBinary, method, q)
 	default:
-		return fmt.Errorf("fetchFeed(%s): unhandled feed format", fr.String())
+		return 0, fmt.Errorf("fetchFeed(%s): unhandled feed format", fr.String())
 	}
 	if err != nil {
-		return fmt.Errorf("fetchFeed(%s:%d) failed to create source: %w", fr.String(), latestSeq, err)
+		return 0, fmt.Errorf("fetchFeed(%s:%d) failed to create source: %w", fr.String(), latestSeq, err)
 	}
+
+	counter := 0
 
 	var buf = &bytes.Buffer{}
 	for src.Next(ctx) {
-
 		err = src.Reader(func(r io.Reader) error {
 			_, err = buf.ReadFrom(r)
 			return err
 		})
 		if err != nil {
-			return err
+			return counter, err
 		}
 
 		err = snk.Verify(buf.Bytes())
 		if err != nil {
-			return err
+			return counter, err
 		}
 		buf.Reset()
+
 		latestSeq++
+		counter++
 	}
 
 	if err := src.Err(); err != nil {
-		return fmt.Errorf("fetchFeed(%s:%d) gossip pump failed: %w", fr.String(), latestSeq, err)
+		return counter, fmt.Errorf("fetchFeed(%s:%d) gossip pump failed: %w", fr.String(), latestSeq, err)
 	}
 
-	return nil
+	return counter, nil
 }
 
 type TokenPool struct {

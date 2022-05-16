@@ -61,6 +61,7 @@ func NewFetcher(
 
 		numberOfConcurrentReplicationsPerPeer: defaultNumberOfConcurrentReplicationsPerPeer,
 		tokenPool:                             NewTokenPool(defaultNumberOfConcurrentReplications),
+		feedTracker:                           NewFeedTracker(),
 	}
 
 	for i, o := range opts {
@@ -107,6 +108,7 @@ func NewServer(
 
 		numberOfConcurrentReplicationsPerPeer: defaultNumberOfConcurrentReplicationsPerPeer,
 		tokenPool:                             NewTokenPool(defaultNumberOfConcurrentReplications),
+		feedTracker:                           NewFeedTracker(),
 	}
 
 	for i, o := range opts {

@@ -60,6 +60,7 @@ type LegacyGossip struct {
 
 	numberOfConcurrentReplicationsPerPeer int
 	tokenPool                             *TokenPool
+	feedTracker                           *FeedTracker
 }
 
 func (LegacyGossip) Handled(m muxrpc.Method) bool { return m.String() == "createHistoryStream" }
