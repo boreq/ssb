@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	timeoutDoesNotHaveMoreMessages = 2 * time.Minute
+	timeoutDoesNotHaveMoreMessages = 5 * time.Minute
 )
 
 type ReplicationCompletedFn func(ReplicationResult)
