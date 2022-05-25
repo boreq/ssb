@@ -370,7 +370,6 @@ func (proc *wantProc) EmitBlob(notif ssb.BlobStoreNotification) error {
 	return nil
 }
 
-//
 func (proc *wantProc) EmitWant(w ssb.BlobWant) error {
 	dbg := level.Debug(proc.info)
 
