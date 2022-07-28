@@ -33,6 +33,7 @@ func (n *Node) TunnelPlugin() ssb.Plugin {
 	return plugin{
 		h: handleNewConnection{
 			Handler: &rootHdlr,
+			network: n,
 			logger:  tunnelLogger,
 		},
 	}
@@ -104,6 +105,7 @@ func (h connectHandler) HandleDuplex(ctx context.Context, req *muxrpc.Request, p
 // handleNewConnection wrapps a muxrpc.Handler to do some stuff with new connections
 type handleNewConnection struct {
 	muxrpc.Handler
+	network *Node
 
 	logger kitlog.Logger
 }
@@ -158,6 +160,7 @@ func (newConn handleNewConnection) HandleConnect(ctx context.Context, edp muxrpc
 	}
 	for i, f := range initState.IDs {
 		level.Info(peerLogger).Log("i", i, "attendant", f.String())
+		newConn.network.DialViaRoom(remote, f)
 	}
 
 	// stream further updates
