@@ -18,6 +18,8 @@ package statematrix
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
+	"go.cryptoscope.co/ssb/message"
 	"os"
 	"path/filepath"
 	"sync"
@@ -36,6 +38,9 @@ type StateMatrix struct {
 
 	mu   sync.Mutex
 	open currentFrontiers
+
+	WantList ssb.ReplicationLister
+	verify   *message.VerificationRouter
 }
 
 // map[peer reference]frontier
@@ -109,6 +114,11 @@ func (sm *StateMatrix) loadFrontier(peer refs.FeedRef) (ssb.NetworkFrontier, err
 		return nil, err
 	}
 	sm.open[peer.String()] = curr
+
+	for s, v := range curr {
+		fmt.Println("frontier", peer.String(), "feed", s, "seq", v.Seq, "rec", v.Receive, "rep", v.Replicate)
+	}
+
 	return curr, nil
 }
 
@@ -273,35 +283,35 @@ func (sm *StateMatrix) Changed(self, peer refs.FeedRef) (ssb.NetworkFrontier, er
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	selfNf, err := sm.loadFrontier(self)
+	selfNf, err := sm.loadLocalFrontier(self)
 	if err != nil {
 		return nil, err
 	}
 
-	peerNf, err := sm.loadFrontier(peer)
-	if err != nil {
-		return nil, err
-	}
+	//peerNf, err := sm.loadFrontier(peer)
+	//if err != nil {
+	//	return nil, err
+	//}
 
 	// calculate the subset of what self wants and peer wants to hear about
 	relevant := make(ssb.NetworkFrontier)
 
 	for wantedFeed, myNote := range selfNf {
-		theirNote, has := peerNf[wantedFeed]
-		if !has && myNote.Receive {
-			// they don't have it, but tell them we want it
-			relevant[wantedFeed] = myNote
-			continue
-		}
+		//theirNote, has := peerNf[wantedFeed]
+		//if !has && myNote.Receive {
+		//	// they don't have it, but tell them we want it
+		//	relevant[wantedFeed] = myNote
+		//	continue
+		//}
 
-		if !theirNote.Replicate {
-			continue
-		}
+		//if !theirNote.Replicate {
+		//	continue
+		//}
 
-		if !theirNote.Receive && wantedFeed != peer.String() {
-			// they dont care about this feed
-			continue
-		}
+		//if !theirNote.Receive && wantedFeed != peer.String() {
+		//	// they dont care about this feed
+		//	continue
+		//}
 
 		relevant[wantedFeed] = myNote
 	}
@@ -367,4 +377,28 @@ func (sm *StateMatrix) Close() error {
 	}
 
 	return nil
+}
+
+func (sm *StateMatrix) loadLocalFrontier(self refs.FeedRef) (ssb.NetworkFrontier, error) {
+	list, err := sm.WantList.ReplicationList().List()
+	if err != nil {
+		return ssb.NetworkFrontier{}, errors.Wrap(err, "replication list error")
+	}
+
+	var frontier ssb.NetworkFrontier
+
+	for _, ref := range list {
+		sink, err := sm.verify.GetSink(ref)
+		if err != nil {
+			return ssb.NetworkFrontier{}, errors.Wrap(err, "failed to get verification sink")
+		}
+
+		frontier[ref.String()] = ssb.Note{
+			Seq:       sink.Seq(),
+			Replicate: true,
+			Receive:   true,
+		}
+	}
+
+	return frontier, nil
 }
