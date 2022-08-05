@@ -66,6 +66,11 @@ func New(base string, self refs.FeedRef) (*StateMatrix, error) {
 	return &sm, nil
 }
 
+func (sm *StateMatrix) SetDependencies(wantList ssb.ReplicationLister, verify *message.VerificationRouter) {
+	sm.WantList = wantList
+	sm.verify = verify
+}
+
 // Inspect returns the current frontier for the passed peer
 func (sm *StateMatrix) Inspect(peer refs.FeedRef) (ssb.NetworkFrontier, error) {
 	sm.mu.Lock()
@@ -385,7 +390,7 @@ func (sm *StateMatrix) loadLocalFrontier(self refs.FeedRef) (ssb.NetworkFrontier
 		return ssb.NetworkFrontier{}, errors.Wrap(err, "replication list error")
 	}
 
-	var frontier ssb.NetworkFrontier
+	frontier := make(ssb.NetworkFrontier)
 
 	for _, ref := range list {
 		sink, err := sm.verify.GetSink(ref)
