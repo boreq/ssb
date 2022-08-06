@@ -15,7 +15,6 @@ import (
 	"go.cryptoscope.co/muxrpc/v2"
 	"go.mindeco.de/log"
 	"go.mindeco.de/log/level"
-	"golang.org/x/sync/errgroup"
 
 	"go.cryptoscope.co/ssb"
 	"go.cryptoscope.co/ssb/internal/neterr"
@@ -48,13 +47,15 @@ func (h *LegacyGossip) FetchAll(
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	fetchGroup, ctx := errgroup.WithContext(ctx)
+
+	waitChan := make(chan struct{}, 10)
 
 	for _, r := range lst {
-		fetchGroup.Go(h.workFeed(ctx, e, r, withLive))
+		waitChan <- struct{}{}
+		h.workFeed(ctx, e, r, withLive)()
+		<-waitChan
 	}
 
-	err = fetchGroup.Wait()
 	return err
 }
 
