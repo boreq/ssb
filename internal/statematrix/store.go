@@ -2,17 +2,6 @@
 //
 // SPDX-License-Identifier: MIT
 
-/*
-Package statematrix stores and provides useful operations on an state matrix for the Epidemic Broadcast Tree protocol.
-
-The state matrix represents multiple _network frontiers_ (or vector clock).
-
-This version uses a SQL because that seems much handier to handle such an irregular sparse matrix.
-
-Q:
-* do we need a 2nd _told us about_ table?
-
-*/
 package statematrix
 
 import (
@@ -39,7 +28,7 @@ type StateMatrix struct {
 	mu   sync.Mutex
 	open currentFrontiers
 
-	WantList ssb.ReplicationLister
+	wantList ssb.ReplicationLister
 	verify   *message.VerificationRouter
 }
 
@@ -67,7 +56,7 @@ func New(base string, self refs.FeedRef) (*StateMatrix, error) {
 }
 
 func (sm *StateMatrix) SetDependencies(wantList ssb.ReplicationLister, verify *message.VerificationRouter) {
-	sm.WantList = wantList
+	sm.wantList = wantList
 	sm.verify = verify
 }
 
@@ -119,10 +108,6 @@ func (sm *StateMatrix) loadFrontier(peer refs.FeedRef) (ssb.NetworkFrontier, err
 		return nil, err
 	}
 	sm.open[peer.String()] = curr
-
-	for s, v := range curr {
-		fmt.Println("frontier", peer.String(), "feed", s, "seq", v.Seq, "rec", v.Receive, "rep", v.Replicate)
-	}
 
 	return curr, nil
 }
@@ -240,55 +225,11 @@ func (sm *StateMatrix) HasLonger() ([]HasLongerResult, error) {
 	return res, nil
 }
 
-// WantsList returns all the feeds a peer wants to recevie messages for
-func (sm *StateMatrix) WantsList(peer refs.FeedRef) ([]refs.FeedRef, error) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	nf, err := sm.loadFrontier(peer)
-	if err != nil {
-		return nil, err
-	}
-
-	var res []refs.FeedRef
-
-	for feedStr, note := range nf {
-		if note.Receive {
-			feed, err := refs.ParseFeedRef(feedStr)
-			if err != nil {
-				return nil, fmt.Errorf("wantList: failed to parse feed entry %q: %w", feedStr, err)
-			}
-			res = append(res, feed)
-		}
-	}
-
-	return res, nil
-}
-
-// WantsFeed returns true if peer want's to receive feed
-func (sm *StateMatrix) WantsFeed(peer, feed refs.FeedRef) (bool, error) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	nf, err := sm.loadFrontier(peer)
-	if err != nil {
-		return false, err
-	}
-
-	n, has := nf[feed.String()]
-	if !has {
-		return false, nil
-	}
-
-	return n.Receive, nil
-}
-
-// Changed returns which feeds have newer messages since last update
 func (sm *StateMatrix) Changed(self, peer refs.FeedRef) (ssb.NetworkFrontier, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	selfNf, err := sm.loadLocalFrontier(self)
+	selfNf, err := sm.loadLocalFrontier()
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +288,12 @@ func (sm *StateMatrix) Update(who refs.FeedRef, update ssb.NetworkFrontier) (ssb
 	}
 
 	sm.open[who.String()] = current
-	return current, nil
+
+	result := make(ssb.NetworkFrontier)
+	for k, v := range current {
+		result[k] = v
+	}
+	return result, nil
 }
 
 // Fill might be deprecated. It just updates the current frontier state
@@ -384,8 +330,8 @@ func (sm *StateMatrix) Close() error {
 	return nil
 }
 
-func (sm *StateMatrix) loadLocalFrontier(self refs.FeedRef) (ssb.NetworkFrontier, error) {
-	list, err := sm.WantList.ReplicationList().List()
+func (sm *StateMatrix) loadLocalFrontier() (ssb.NetworkFrontier, error) {
+	list, err := sm.wantList.ReplicationList().List()
 	if err != nil {
 		return ssb.NetworkFrontier{}, errors.Wrap(err, "replication list error")
 	}
