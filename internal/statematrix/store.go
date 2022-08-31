@@ -226,13 +226,13 @@ func (sm *StateMatrix) HasLonger() ([]HasLongerResult, error) {
 }
 
 func (sm *StateMatrix) Changed(self, peer refs.FeedRef) (ssb.NetworkFrontier, error) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
 	selfNf, err := sm.loadLocalFrontier()
 	if err != nil {
 		return nil, err
 	}
+
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 
 	//peerNf, err := sm.loadFrontier(peer)
 	//if err != nil {
