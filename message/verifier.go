@@ -54,7 +54,7 @@ type VerificationRouter struct {
 }
 
 // GetSink returns a verification sink for that author. If called twice for the same author it returns the same drink (for deduplication)
-func (vs *VerificationRouter) GetSink(ref refs.FeedRef, complete bool) (SequencedVerificationSink, error) {
+func (vs *VerificationRouter) GetSink(ref refs.FeedRef) (SequencedVerificationSink, error) {
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
 

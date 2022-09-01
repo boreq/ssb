@@ -120,6 +120,10 @@ func (h *MUXRPCHandler) sendState(ctx context.Context, tx *muxrpc.ByteSink, remo
 		currState[selfRef] = myNote
 	}
 
+	for k, note := range currState {
+		fmt.Println("sending state", k, note.Seq, note.Receive, note.Replicate)
+	}
+
 	tx.SetEncoding(muxrpc.TypeJSON)
 	err = json.NewEncoder(tx).Encode(currState)
 	if err != nil {
@@ -188,7 +192,7 @@ func (h *MUXRPCHandler) Loop(ctx context.Context, tx *muxrpc.ByteSink, rx *muxrp
 				continue
 			}
 
-			vsnk, err := h.verify.GetSink(msgWithAuthor.Author, true)
+			vsnk, err := h.verify.GetSink(msgWithAuthor.Author)
 			if err != nil {
 				h.check(err)
 				continue

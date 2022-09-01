@@ -379,16 +379,17 @@ func (n *Node) Serve(ctx context.Context, wrappers ...muxrpc.HandlerWrapper) err
 		ch, done := n.localDiscovRx.Notify()
 		defer done()
 		go func() {
+			defer level.Debug(evtLog).Log("msg", "discovery dial loop exited")
+
 			for a := range ch {
 				if is, _ := n.connTracker.Active(a); is {
 					//n.log.Log("event", "debug", "msg", "ignoring active", "addr", a.String())
 					continue
 				}
 				err := n.Connect(ctx, a)
-				if err == nil {
-					continue
+				if err != nil {
+					level.Warn(evtLog).Log("msg", "error connecting to a local peer", "err", err)
 				}
-				level.Warn(evtLog).Log("msg", "discovery dialback loop exited")
 			}
 		}()
 	}

@@ -2,22 +2,13 @@
 //
 // SPDX-License-Identifier: MIT
 
-/*
-Package statematrix stores and provides useful operations on an state matrix for the Epidemic Broadcast Tree protocol.
-
-The state matrix represents multiple _network frontiers_ (or vector clock).
-
-This version uses a SQL because that seems much handier to handle such an irregular sparse matrix.
-
-Q:
-* do we need a 2nd _told us about_ table?
-
-*/
 package statematrix
 
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
+	"go.cryptoscope.co/ssb/message"
 	"os"
 	"path/filepath"
 	"sync"
@@ -36,6 +27,9 @@ type StateMatrix struct {
 
 	mu   sync.Mutex
 	open currentFrontiers
+
+	wantList ssb.ReplicationLister
+	verify   *message.VerificationRouter
 }
 
 // map[peer reference]frontier
@@ -59,6 +53,11 @@ func New(base string, self refs.FeedRef) (*StateMatrix, error) {
 	}
 
 	return &sm, nil
+}
+
+func (sm *StateMatrix) SetDependencies(wantList ssb.ReplicationLister, verify *message.VerificationRouter) {
+	sm.wantList = wantList
+	sm.verify = verify
 }
 
 // Inspect returns the current frontier for the passed peer
@@ -109,6 +108,7 @@ func (sm *StateMatrix) loadFrontier(peer refs.FeedRef) (ssb.NetworkFrontier, err
 		return nil, err
 	}
 	sm.open[peer.String()] = curr
+
 	return curr, nil
 }
 
@@ -225,84 +225,17 @@ func (sm *StateMatrix) HasLonger() ([]HasLongerResult, error) {
 	return res, nil
 }
 
-// WantsList returns all the feeds a peer wants to recevie messages for
-func (sm *StateMatrix) WantsList(peer refs.FeedRef) ([]refs.FeedRef, error) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	nf, err := sm.loadFrontier(peer)
-	if err != nil {
-		return nil, err
-	}
-
-	var res []refs.FeedRef
-
-	for feedStr, note := range nf {
-		if note.Receive {
-			feed, err := refs.ParseFeedRef(feedStr)
-			if err != nil {
-				return nil, fmt.Errorf("wantList: failed to parse feed entry %q: %w", feedStr, err)
-			}
-			res = append(res, feed)
-		}
-	}
-
-	return res, nil
-}
-
-// WantsFeed returns true if peer want's to receive feed
-func (sm *StateMatrix) WantsFeed(peer, feed refs.FeedRef) (bool, error) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	nf, err := sm.loadFrontier(peer)
-	if err != nil {
-		return false, err
-	}
-
-	n, has := nf[feed.String()]
-	if !has {
-		return false, nil
-	}
-
-	return n.Receive, nil
-}
-
-// Changed returns which feeds have newer messages since last update
 func (sm *StateMatrix) Changed(self, peer refs.FeedRef) (ssb.NetworkFrontier, error) {
+	selfNf, err := sm.loadLocalFrontier()
+	if err != nil {
+		return nil, err
+	}
+
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	selfNf, err := sm.loadFrontier(self)
-	if err != nil {
-		return nil, err
-	}
-
-	peerNf, err := sm.loadFrontier(peer)
-	if err != nil {
-		return nil, err
-	}
-
-	// calculate the subset of what self wants and peer wants to hear about
 	relevant := make(ssb.NetworkFrontier)
-
 	for wantedFeed, myNote := range selfNf {
-		theirNote, has := peerNf[wantedFeed]
-		if !has && myNote.Receive {
-			// they don't have it, but tell them we want it
-			relevant[wantedFeed] = myNote
-			continue
-		}
-
-		if !theirNote.Replicate {
-			continue
-		}
-
-		if !theirNote.Receive && wantedFeed != peer.String() {
-			// they dont care about this feed
-			continue
-		}
-
 		relevant[wantedFeed] = myNote
 	}
 
@@ -332,7 +265,12 @@ func (sm *StateMatrix) Update(who refs.FeedRef, update ssb.NetworkFrontier) (ssb
 	}
 
 	sm.open[who.String()] = current
-	return current, nil
+
+	result := make(ssb.NetworkFrontier)
+	for k, v := range current {
+		result[k] = v
+	}
+	return result, nil
 }
 
 // Fill might be deprecated. It just updates the current frontier state
@@ -367,4 +305,28 @@ func (sm *StateMatrix) Close() error {
 	}
 
 	return nil
+}
+
+func (sm *StateMatrix) loadLocalFrontier() (ssb.NetworkFrontier, error) {
+	list, err := sm.wantList.ReplicationList().List()
+	if err != nil {
+		return ssb.NetworkFrontier{}, errors.Wrap(err, "replication list error")
+	}
+
+	frontier := make(ssb.NetworkFrontier)
+
+	for _, ref := range list {
+		sink, err := sm.verify.GetSink(ref)
+		if err != nil {
+			return ssb.NetworkFrontier{}, errors.Wrap(err, "failed to get verification sink")
+		}
+
+		frontier[ref.String()] = ssb.Note{
+			Seq:       sink.Seq(),
+			Replicate: true,
+			Receive:   true,
+		}
+	}
+
+	return frontier, nil
 }
