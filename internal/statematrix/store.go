@@ -234,31 +234,8 @@ func (sm *StateMatrix) Changed(self, peer refs.FeedRef) (ssb.NetworkFrontier, er
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	//peerNf, err := sm.loadFrontier(peer)
-	//if err != nil {
-	//	return nil, err
-	//}
-
-	// calculate the subset of what self wants and peer wants to hear about
 	relevant := make(ssb.NetworkFrontier)
-
 	for wantedFeed, myNote := range selfNf {
-		//theirNote, has := peerNf[wantedFeed]
-		//if !has && myNote.Receive {
-		//	// they don't have it, but tell them we want it
-		//	relevant[wantedFeed] = myNote
-		//	continue
-		//}
-
-		//if !theirNote.Replicate {
-		//	continue
-		//}
-
-		//if !theirNote.Receive && wantedFeed != peer.String() {
-		//	// they dont care about this feed
-		//	continue
-		//}
-
 		relevant[wantedFeed] = myNote
 	}
 
