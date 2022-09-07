@@ -450,19 +450,9 @@ func (b *BadgerBuilder) recurseHops(walked *ssb.StrFeedSet, vis map[string]struc
 			return err
 		}
 
-		// TODO: use from follows followedByWho
-		dstFollows, err := b.Follows(followedByWho)
-		if err != nil {
-			return fmt.Errorf("recurseHops(%d): follows from entry(%d) failed: %w", depth, i, err)
+		if err := b.recurseHops(walked, vis, followedByWho, depth-1); err != nil {
+			return err
 		}
-
-		isF := dstFollows.Has(who)
-		if isF { // found a friend, recurse
-			if err := b.recurseHops(walked, vis, followedByWho, depth-1); err != nil {
-				return err
-			}
-		}
-		// b.log.Log("depth", depth, "from", from.ShortRef(), "follows", followedByWho.ShortRef(), "friend", isF, "cnt", dstFollows.Count())
 	}
 
 	// mark them as visited
