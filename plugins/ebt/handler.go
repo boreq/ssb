@@ -134,13 +134,13 @@ func (h *MUXRPCHandler) sendState(ctx context.Context, tx *muxrpc.ByteSink, remo
 }
 
 // Loop executes the ebt logic loop, reading from the peer and sending state and messages as requests
-func (h *MUXRPCHandler) Loop(ctx context.Context, tx *muxrpc.ByteSink, rx *muxrpc.ByteSource, remoteAddr net.Addr) {
+func (h *MUXRPCHandler) Loop(ctx context.Context, tx *muxrpc.ByteSink, rx *muxrpc.ByteSource, remoteAddr net.Addr) error {
 	session := h.Sessions.Started(remoteAddr)
 
 	peer, err := ssb.GetFeedRefFromAddr(remoteAddr)
 	if err != nil {
 		h.check(err)
-		return
+		return err
 	}
 
 	peerLogger := log.With(h.info, "r", peer.ShortSigil())
@@ -157,7 +157,7 @@ func (h *MUXRPCHandler) Loop(ctx context.Context, tx *muxrpc.ByteSink, rx *muxrp
 
 	if err := h.sendState(ctx, tx, peer); err != nil {
 		h.check(err)
-		return
+		return err
 	}
 
 	var buf = &bytes.Buffer{}
@@ -170,7 +170,8 @@ func (h *MUXRPCHandler) Loop(ctx context.Context, tx *muxrpc.ByteSink, rx *muxrp
 		})
 		if err != nil {
 			h.check(err)
-			return
+			rx.Cancel(err)
+			return err
 		}
 
 		jsonBody := buf.Bytes()
@@ -211,7 +212,8 @@ func (h *MUXRPCHandler) Loop(ctx context.Context, tx *muxrpc.ByteSink, rx *muxrp
 		wants, err := h.stateMatrix.Update(peer, frontierUpdate)
 		if err != nil {
 			h.check(err)
-			return
+			rx.Cancel(err)
+			return err
 		}
 
 		// TODO: partition wants across the open connections
@@ -225,7 +227,8 @@ func (h *MUXRPCHandler) Loop(ctx context.Context, tx *muxrpc.ByteSink, rx *muxrp
 			feed, err := refs.ParseFeedRef(feedStr)
 			if err != nil {
 				h.check(err)
-				return
+				rx.Cancel(err)
+				return err
 			}
 
 			if !their.Replicate {
@@ -252,11 +255,12 @@ func (h *MUXRPCHandler) Loop(ctx context.Context, tx *muxrpc.ByteSink, rx *muxrp
 			if err != nil {
 				cancel()
 				h.check(err)
-				return
+				return err
 			}
 			session.Subscribed(feed, cancel)
 		}
 	}
 
 	h.check(rx.Err())
+	return rx.Err()
 }
