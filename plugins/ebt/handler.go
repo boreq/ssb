@@ -115,7 +115,7 @@ func (h *MUXRPCHandler) sendState(ctx context.Context, tx *muxrpc.ByteSink, remo
 	selfRef := h.self.String()
 
 	// don't receive your own feed
-	if myNote, has := currState[selfRef]; has {
+	if myNote, has := currState[selfRef]; has && myNote.Seq > 0 {
 		myNote.Receive = false
 		currState[selfRef] = myNote
 	}
