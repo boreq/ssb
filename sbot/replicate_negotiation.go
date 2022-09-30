@@ -6,6 +6,8 @@ package sbot
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"time"
 
 	"go.cryptoscope.co/muxrpc/v2"
@@ -39,7 +41,7 @@ func (rn replicateNegotiator) HandleConnect(ctx context.Context, e muxrpc.Endpoi
 	// the client calls ebt.replicate to the server
 	if !muxrpc.IsServer(e) {
 		// do nothing if we are the server, unless the peer doesn't start ebt
-		started := rn.ebt.Sessions.WaitFor(ctx, remoteAddr, 1*time.Minute)
+		started := rn.ebt.Sessions.WaitFor(ctx, remoteAddr, 10*time.Second)
 		if !started {
 			rn.lg.StartLegacyFetching(ctx, e)
 		}
@@ -54,18 +56,27 @@ func (rn replicateNegotiator) HandleConnect(ctx context.Context, e muxrpc.Endpoi
 
 	level.Debug(rn.logger).Log("event", "triggering ebt.replicate", "r", remote.ShortSigil())
 
-	var opt = map[string]interface{}{"version": 3}
-
-	// initiate ebt channel
-	rx, tx, err := e.Duplex(ctx, muxrpc.TypeJSON, muxrpc.Method{"ebt", "replicate"}, opt)
-
-	err = rn.ebt.Loop(ctx, tx, rx, remoteAddr)
-	if err != nil {
-		level.Debug(rn.logger).Log("event", "no ebt support", "err", err)
-		// fallback to legacy
+	if err = rn.startLoop(ctx, e, remoteAddr); err != nil {
+		level.Debug(rn.logger).Log("event", "ebt error", "err", err)
 		rn.lg.StartLegacyFetching(ctx, e)
 		return
 	}
+}
+
+func (rn replicateNegotiator) startLoop(ctx context.Context, e muxrpc.Endpoint, remoteAddr net.Addr) error {
+	var opt = map[string]interface{}{"version": 3}
+
+	rx, tx, err := e.Duplex(ctx, muxrpc.TypeJSON, muxrpc.Method{"ebt", "replicate"}, opt)
+	if err != nil {
+		return fmt.Errorf("error sending the request: %w", err)
+	}
+
+	err = rn.ebt.Loop(ctx, tx, rx, remoteAddr)
+	if err != nil {
+		return fmt.Errorf("error running the loop: %w", err)
+	}
+
+	return nil
 }
 
 func (replicateNegotiator) Handled(m muxrpc.Method) bool { return false }
