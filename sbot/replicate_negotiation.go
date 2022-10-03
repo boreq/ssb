@@ -59,14 +59,18 @@ func (rn replicateNegotiator) HandleConnect(ctx context.Context, e muxrpc.Endpoi
 	// initiate ebt channel
 	rx, tx, err := e.Duplex(ctx, muxrpc.TypeJSON, muxrpc.Method{"ebt", "replicate"}, opt)
 	if err != nil {
-		level.Debug(rn.logger).Log("event", "no ebt support", "err", err)
+		level.Debug(rn.logger).Log("event", "error opening ebt stream", "err", err)
 
-		// fallback to legacy
+		// fallback to legacy gossip
 		rn.lg.StartLegacyFetching(ctx, e)
 		return
 	}
 
 	rn.ebt.Loop(ctx, tx, rx, remoteAddr)
+
+	// fallback to legacy gossip
+	rn.lg.StartLegacyFetching(ctx, e)
+
 }
 
 func (replicateNegotiator) Handled(m muxrpc.Method) bool { return false }
