@@ -106,22 +106,14 @@ func (h *MUXRPCHandler) HandleCall(ctx context.Context, req *muxrpc.Request) {
 	h.Loop(ctx, snk, src, req.RemoteAddr())
 }
 
-func (h *MUXRPCHandler) sendState(ctx context.Context, tx *muxrpc.ByteSink, remote refs.FeedRef) error {
+func (h *MUXRPCHandler) sendState(tx *muxrpc.ByteSink, remote refs.FeedRef) error {
 	currState, err := h.stateMatrix.Changed(h.self, remote)
 	if err != nil {
 		return fmt.Errorf("failed to get changed frontier: %w", err)
 	}
 
-	selfRef := h.self.String()
-
-	// don't receive your own feed
-	if myNote, has := currState[selfRef]; has {
-		myNote.Receive = false
-		currState[selfRef] = myNote
-	}
-
 	for k, note := range currState {
-		fmt.Println("sending state", k, note.Seq, note.Receive, note.Replicate)
+		level.Debug(h.info).Log("event", "ebt sending note", "feed", k, "seq", note.Seq, "receive", note.Receive, "replicate", note.Replicate)
 	}
 
 	tx.SetEncoding(muxrpc.TypeJSON)
@@ -155,7 +147,7 @@ func (h *MUXRPCHandler) Loop(ctx context.Context, tx *muxrpc.ByteSink, rx *muxrp
 		}
 	}()
 
-	if err := h.sendState(ctx, tx, peer); err != nil {
+	if err := h.sendState(tx, peer); err != nil {
 		h.check(err)
 		return
 	}
