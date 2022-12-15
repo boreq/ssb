@@ -50,6 +50,14 @@ func DisableLiveIndexMode() Option {
 	}
 }
 
+// DisableIndexes disables the rebuilding of indexes completely.
+func DisableIndexes() Option {
+	return func(s *Sbot) error {
+		s.indexUpdates = false
+		return nil
+	}
+}
+
 // WithRepoPath changes where the replication database and blobs are stored.
 func WithRepoPath(path string) Option {
 	return func(s *Sbot) error {
