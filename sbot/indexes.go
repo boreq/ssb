@@ -128,18 +128,13 @@ func (s *Sbot) serveIndex(name string, snk librarian.SinkIndex) {
 	s.serveIndexFrom(name, snk, s.ReceiveLog)
 }
 
-/*
-	some indexes just require a certain kind of message, like type:contact or type:about.
+/* some indexes just require a certain kind of message, like type:contact or type:about.
 
 contactLog, err := s.ByType.Get(librarian.Addr("contact"))
 if err != nil { ... }
 msgs := mutil.Indirect(s.ReceiveLog, contactLog)
 */
 func (s *Sbot) serveIndexFrom(name string, snk librarian.SinkIndex, msgs margaret.Log) {
-	if !s.indexUpdates {
-		return
-	}
-
 	s.idxInSync.Add(1)
 
 	s.indexStateMu.Lock()

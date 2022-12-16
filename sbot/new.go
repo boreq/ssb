@@ -142,7 +142,6 @@ type Sbot struct {
 	mlogIndicies map[string]multilog.MultiLog
 	simpleIndex  map[string]librarian.Index
 
-	indexUpdates     bool
 	liveIndexUpdates bool
 	indexStateMu     sync.Mutex
 	indexStates      map[string]string
@@ -171,7 +170,6 @@ type Sbot struct {
 // New creates an sbot instance using the passed options to configure it.
 func New(fopts ...Option) (*Sbot, error) {
 	var s = new(Sbot)
-	s.indexUpdates = true
 	s.liveIndexUpdates = true
 
 	s.public = ssb.NewPluginManager()
